@@ -1,0 +1,9 @@
+[project]
+name = "copy_pic"
+version = "0.02"
+description = "Copy group and rename pictures from camera"
+requires-python = ">=3.5"
+keywords = ["python", "copy_pic"]
+authors = [
+    {name = "Stéphane Péneau"},
+]
