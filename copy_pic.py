@@ -61,7 +61,7 @@ def arg_parse():
     parser= argparse.ArgumentParser(description="A tool to copy pictures from multiple external sources")
     parser.add_argument("destination", nargs="?", help="Path destination for the pictures. Without this parameter, "
                                                        "the script will use the current directory as the destination", default=os.getcwd())
-    parser.add_argument("--version", action="version", version="%(prog)s 0.03")
+    parser.add_argument("--version", action="version", version="%(prog)s 0.02")
     parser.add_argument("-s", "--source", help="Name of the volume's sources", default="avant, droite, arriere, gauche, pla_droite, pla_gauche")
     parser.add_argument("-c", "--cut", help="Min time between two pictures to create a new group (in seconds)",
                         default=10, type=int)
@@ -123,18 +123,56 @@ def get_drive_path(volumename, alldrivelist, drive_type=None):
         alldrivelist = [drive for drive in alldrivelist if drive[drive_type_index] == drive_type]
     if 'win32' in sys.platform:
         for drive in alldrivelist:
+            # search with drive name
             if drive[3].lower() == volumename.lower():
+                return drive[2]
+            # search file in drive
+            if find_volume_file_name(volumename, drive[2]):
                 return drive[2]
     elif 'linux' in sys.platform:
         for drive in alldrivelist:
-            for elt in drive.split():
-                if volumename.lower() in elt.lower():
+            print("drive: ", drive)
+            # search with drive name
+            for elt in drive.split('/'):
+                if volumename.lower() in elt.lower() and 'mtp client' not in elt.lower():
+                    print("found: ", elt)
                     return elt
+            # search file in drive
+            if find_volume_file_name(volumename, drive):
+                return drive
     elif 'darwin' in sys.platform:
         for drive in alldrivelist:
+            # search with drive name
             if drive.lower() == volumename.lower():
                 return "/Volumes/" + drive
+            # search file in drive
+            if find_volume_file_name(volumename, drive):
+                return "/Volumes/" + drive
 
+def find_volume_file_name(filename, drive):
+    """find a name in the root dir"""
+    try:
+        for file in os.listdir(drive):
+            if filename.lower() == file.lower():
+                return drive
+    # Gopro Mtp mode hide all files in root folder, but we can place a front/right/... in the DCIM folder
+    # Let's find if it exists
+        for file in os.listdir(os.path.join(drive, 'DCIM')):
+            if filename.lower() == file.lower():
+                return drive
+    except FileNotFoundError:
+        pass
+    return None
+
+def get_mtpdrivelist():
+    """ Return a list of mtp drive path """
+
+    if 'linux' in sys.platform:
+        mtp_path = '/run/user/1000/gvfs/'
+        device_list = os.listdir(mtp_path)
+        device_list = [os.path.join(mtp_path, device) for device in device_list]
+        drivelist = [os.path.join(device, os.listdir(device)[0]) for device in device_list if device != None]
+        return drivelist
 
 def get_drivelist():
     """Return a list of drives connected to the computer
@@ -155,8 +193,6 @@ def get_drivelist():
         for drive in drivelist:  # convert drive type to integer
             drive[drive_type_index] = int(drive[drive_type_index])
             # drivefiltered = [drive for drive in drivelist if drive[drive_type_index] == str(2)] #We keep only the drives with type 2
-
-
             # driveLines = drivelisto.replace("\r", "").split('\n')
 
     elif 'linux' in sys.platform:
@@ -201,7 +237,7 @@ def listgroup():
         print("fin de groupe")
 
 def make_groups(piclist, cutoff):
-    """ make groups depending on cut time"""
+    """ detect groups index depending on cut time"""
 
     groups = []
     groups.append(piclist[0][1])
@@ -218,8 +254,12 @@ def make_groups(piclist, cutoff):
             groups.append(path2)
 
     for i, group in enumerate(groups):
-        groups[i] = find_in_sublist(piclist, group)
-        print("Group {0} start : {1}".format(i + 1, piclist[groups[i]][2].strftime("%Y-%m-%d_%HH%Mmn%Ss")))
+        groups[i] = int(find_in_sublist(piclist, group))
+        try:
+            end_index = int(find_in_sublist(piclist, groups[i+1]))
+        except IndexError:
+            end_index = len(piclist)
+        print("Group {0} start : {1} - {2} pictures".format(i + 1, piclist[groups[i]][2].strftime("%Y-%m-%d_%HH%Mmn%Ss"), end_index - groups[i]))
     return groups
 
 def make_pics_groups(piclist, groups):
@@ -241,7 +281,6 @@ def make_pics_groups(piclist, groups):
         except:
             pass
 
-
 def dispatch_to_queue(pic, group_path):
     """Send a picture to be copied and his path destination, to a specific queue.
 	One queue for each camera/sdcard
@@ -261,21 +300,22 @@ def dispatch_to_queue(pic, group_path):
         picQueue5.put([pic, group_path])
 
 
-def start_copy_thread():
-    """Create a thread for each queue, and send it to the "rename_and_copy_pic" function
+def start_thread(delete=False):
+    """Create a thread for each queue, and send it to the "rename_and_copy_pic" or delete function
 	"""
+    target_func = delete_pic if delete else rename_and_copy_pic
     start_time = datetime.datetime.now()
-    worker0 = Thread(target=rename_and_copy_pic, args=(picQueue0,))
+    worker0 = Thread(target=target_func, args=(picQueue0,))
     worker0.start()
-    worker1 = Thread(target=rename_and_copy_pic, args=(picQueue1,))
+    worker1 = Thread(target=target_func, args=(picQueue1,))
     worker1.start()
-    worker2 = Thread(target=rename_and_copy_pic, args=(picQueue2,))
+    worker2 = Thread(target=target_func, args=(picQueue2,))
     worker2.start()
-    worker3 = Thread(target=rename_and_copy_pic, args=(picQueue3,))
+    worker3 = Thread(target=target_func, args=(picQueue3,))
     worker3.start()
-    worker4 = Thread(target=rename_and_copy_pic, args=(picQueue4,))
+    worker4 = Thread(target=target_func, args=(picQueue4,))
     worker4.start()
-    worker5 = Thread(target=rename_and_copy_pic, args=(picQueue5,))
+    worker5 = Thread(target=target_func, args=(picQueue5,))
     worker5.start()
     picQueue0.join()
     picQueue1.join()
@@ -283,9 +323,27 @@ def start_copy_thread():
     picQueue3.join()
     picQueue4.join()
     picQueue5.join()
-    print(len(piclist[:pic_end]), "pictures copied in", (
-        datetime.datetime.now() - start_time).total_seconds(), "seconds")
+    print("{} pictures {} in {} seconds".format(len(piclist[:pic_end]), "copied" if not delete else "deleted", (datetime.datetime.now() - start_time).total_seconds()))
 
+def delete_pic(queue):
+    """Take each picture in the queue and delete it"""
+    dir_list = []
+    while not queue.empty():
+        picture, group_path = queue.get()
+        camid, picture_path, timestamp = picture
+        dir_list.append(os.path.dirname(picture_path))
+        try:
+            print("Deleting {}".format(picture_path))
+            os.remove(picture_path)
+        except Exception as e:
+            print("Can't delete file : {} - {}".format(picture_path, e))
+        queue.task_done()
+    #deleting empty directory
+    unique_dir=list(set(dir_list))
+    for dir in unique_dir:
+        if len(os.listdir(dir)) == 0:
+            print("Deleting empty directory : ", dir)
+            shutil.rmtree(dir)
 
 def rename_and_copy_pic(queue):
     """Take each picture in the queue, and copy it to the destination, with a new name.
@@ -337,6 +395,11 @@ if __name__ == '__main__':
     volume_names = [volume.strip() for volume in args.source.lower().split(",")]
     print("Searching for volumes....")
     alldrivelist = get_drivelist()
+    mtpdrivelist = get_mtpdrivelist()
+    try:
+        alldrivelist.extend(mtpdrivelist)
+    except TypeError:
+        pass
     drivelist = []
     for volume in volume_names:
         drive_letter = get_drive_path(volume, alldrivelist)
@@ -376,6 +439,7 @@ if __name__ == '__main__':
     groups = make_groups(piclist, cutoff)
 
     input_validity = False
+    delete_file = False
     while input_validity == False:
         if not allgroups:
             user_input = input(
@@ -383,13 +447,16 @@ if __name__ == '__main__':
                 "-")
         else:
             user_input = ['']
-
+        if str(user_input[0]).startswith('d'):
+            #selector to delete group
+            delete_file=True
+            user_input[0] = user_input[0][1:]
         if user_input == ['']:
             user_input[0] = 1
             user_input.append(len(groups))
         if len(user_input) == 1:
             user_input.append(user_input[0])
-        if type(user_input[0]) is str and user_input[0].startswith('c'):
+        if str(user_input[0]).startswith('c'):
             cutoff = int(user_input[0][1:])
             groups = make_groups(piclist, cutoff)
         input_validity = check_user_choice(user_input)
@@ -410,4 +477,4 @@ if __name__ == '__main__':
     picQueue5 = Queue()
 
     make_pics_groups(piclist[:pic_end], groups[groups_start:groups_end])
-    start_copy_thread()
+    start_thread(delete_file)
