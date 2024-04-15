@@ -133,13 +133,15 @@ def get_drive_path(volumename, alldrivelist, drive_type=None):
         for drive in alldrivelist:
             print("drive: ", drive)
             # search with drive name
-            for elt in drive.split('/'):
-                if volumename.lower() in elt.lower() and 'mtp client' not in elt.lower():
-                    print("found: ", elt)
-                    return elt
+            if drive.get('type') == 'volume':
+                for elt in drive['volume'].split():
+                    if volumename.lower() in elt.lower() and 'mtp client' not in elt.lower():
+                        print("found volume: ", elt)
+                        return elt    
             # search file in drive
-            if find_volume_file_name(volumename, drive):
-                return drive
+            if find_volume_file_name(volumename, drive.get('volume')):
+                print("found with file: ", drive)
+                return drive.get('volume')
     elif 'darwin' in sys.platform:
         for drive in alldrivelist:
             # search with drive name
@@ -152,11 +154,13 @@ def get_drive_path(volumename, alldrivelist, drive_type=None):
 def find_volume_file_name(filename, drive):
     """find a name in the root dir"""
     try:
+        #print("searching in: ".format(drive))
         for file in os.listdir(drive):
             if filename.lower() == file.lower():
                 return drive
     # Gopro Mtp mode hide all files in root folder, but we can place a front/right/... in the DCIM folder
     # Let's find if it exists
+        #print("searching in: ".format(os.path.join(drive, 'DCIM')))
         for file in os.listdir(os.path.join(drive, 'DCIM')):
             if filename.lower() == file.lower():
                 return drive
@@ -171,7 +175,8 @@ def get_mtpdrivelist():
         mtp_path = '/run/user/1000/gvfs/'
         device_list = os.listdir(mtp_path)
         device_list = [os.path.join(mtp_path, device) for device in device_list]
-        drivelist = [os.path.join(device, os.listdir(device)[0]) for device in device_list if device != None]
+        drivelist = [{'type':'mtp', 'volume':os.path.join(mtp_path, device, os.listdir(device)[0])} for device in device_list if device != None]
+        print("MTP DRIVELIST: ", drivelist)
         return drivelist
 
 def get_drivelist():
@@ -198,7 +203,11 @@ def get_drivelist():
     elif 'linux' in sys.platform:
         with open("/proc/mounts") as f:
             mounts = f.read()
-        drivelist = [mount for mount in mounts.split("\n") if "/dev/" in mount[:5]]
+        #drivelist=[]
+        #for drive in mounts.split("\n"):
+        #    if "/dev/" in drive[:5]:
+        #        drivelist.append({'type':'volume', 'volume':'drive'})
+        drivelist = [{'type':'volume', 'volume':mount} for mount in mounts.split("\n") if "/dev/" in mount[:5]]
 
 
     # guess how it should be on mac os, similar to linux , the mount command should
@@ -405,7 +414,7 @@ if __name__ == '__main__':
         drive_letter = get_drive_path(volume, alldrivelist)
         if drive_letter:
             drivelist.append([drive_letter, volume])
-
+    
     for drive in drivelist:
         print("Volume found: {}   ({})".format(drive[0], drive[1]))
     if len(drivelist) == 0:
@@ -420,7 +429,7 @@ if __name__ == '__main__':
                        os.path.splitdrive(dest_folder)[0].lower())
     if  type(check_dest) == int:
         sys.exit("Destination is the same as one source.... Exiting")
-
+    #sys.exit()
     piclist = []
     print("Searching for pictures...")
     
