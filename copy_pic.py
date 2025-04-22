@@ -166,6 +166,8 @@ def find_volume_file_name(filename, drive):
                 return drive
     except FileNotFoundError:
         pass
+    except PermissionError:
+        pass
     return None
 
 def get_mtpdrivelist():
