@@ -278,6 +278,7 @@ def make_pics_groups(piclist, groups):
 	send the picture to the "dispatch_to_queue function" """
     groups.reverse()
     cut = groups.pop()
+    bla = 0
     for i, pic in enumerate(piclist):
         if i == cut:
             group_path = piclist[i][2].strftime("%Y-%m-%d_%HH%Mmn%Ss")
@@ -289,14 +290,16 @@ def make_pics_groups(piclist, groups):
         # rename_and_copy_pic(piclist[i], group_path)
         try:
             dispatch_to_queue(piclist[i], group_path)
+            bla += 1
         except:
             pass
+    print("BLA : ", bla)
 
 def dispatch_to_queue(pic, group_path):
     """Send a picture to be copied and his path destination, to a specific queue.
 	One queue for each camera/sdcard
 	"""
-
+    
     if volume_names[0] in pic:
         picQueue0.put([pic, group_path])
     elif volume_names[1] in pic:
@@ -454,7 +457,10 @@ if __name__ == '__main__':
     while input_validity == False:
         if not allgroups:
             user_input = input(
-                "\nEnter the group' number you want to copy\nOr enter the group range (e.g. 2-4 to copy the groups 2,3 and 4),\nOr press enter to copy all groups,\nOr enter c+value to change the cut value (e.g. c600 for 600 seconds) : ").split(
+                "\nEnter the group' number you want to copy\nOr enter the group range (e.g. 2-4 to copy the groups 2,3 and 4),\n" \
+                "Or press enter to copy all groups,\n" \
+                "Or enter c+value to change the cut value (e.g. c600 for 600 seconds),\n" \
+                "Or enter q to quit : ").split(
                 "-")
         else:
             user_input = ['']
@@ -470,6 +476,9 @@ if __name__ == '__main__':
         if str(user_input[0]).startswith('c'):
             cutoff = int(user_input[0][1:])
             groups = make_groups(piclist, cutoff)
+        if str(user_input[0].lower()) == 'q':
+            print("manual exit")
+            sys.exit()
         input_validity = check_user_choice(user_input)
 
     if len(groups) == int(user_input[1]):
