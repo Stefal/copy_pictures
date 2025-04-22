@@ -278,6 +278,7 @@ def make_pics_groups(piclist, groups):
 	send the picture to the "dispatch_to_queue function" """
     groups.reverse()
     cut = groups.pop()
+    bla = 0
     for i, pic in enumerate(piclist):
         if i == cut:
             group_path = piclist[i][2].strftime("%Y-%m-%d_%HH%Mmn%Ss")
@@ -289,14 +290,16 @@ def make_pics_groups(piclist, groups):
         # rename_and_copy_pic(piclist[i], group_path)
         try:
             dispatch_to_queue(piclist[i], group_path)
+            bla += 1
         except:
             pass
+    print("BLA : ", bla)
 
 def dispatch_to_queue(pic, group_path):
     """Send a picture to be copied and his path destination, to a specific queue.
 	One queue for each camera/sdcard
 	"""
-
+    
     if volume_names[0] in pic:
         picQueue0.put([pic, group_path])
     elif volume_names[1] in pic:
