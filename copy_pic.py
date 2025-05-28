@@ -53,7 +53,8 @@ from lib.exif_read import ExifRead as EXIF
 from threading import Thread
 from queue import Queue
 from concurrent.futures import ThreadPoolExecutor
-
+#if 'win32' in sys.platform:
+#    import win32api
 
 def arg_parse():
     """ Parse the command line you use to launch the script """
@@ -63,6 +64,8 @@ def arg_parse():
                                                        "the script will use the current directory as the destination", default=os.getcwd())
     parser.add_argument("--version", action="version", version="%(prog)s 0.04")
     parser.add_argument("-s", "--source", help="Name of the volume's sources", default="avant, droite, arriere, gauche, pla_droite, pla_gauche")
+#    parser.add_argument("-s", "--source", help="Name of the volume's sources")
+    parser.add_argument("-d", "--drive", help="Drive path (linux) or letter (windows)")
     parser.add_argument("-c", "--cut", help="Min time between two pictures to create a new group (in seconds)",
                         default=10, type=int)
     parser.add_argument("-a", "--allgroups", help="Copy all groups of pictures without asking.", action="store_true")
@@ -180,15 +183,17 @@ def get_mtpdrivelist():
         drivelist = [{'type':'mtp', 'volume':os.path.join(mtp_path, device, os.listdir(device)[0])} for device in device_list if device != None]
         print("MTP DRIVELIST: ", drivelist)
         return drivelist
+    
+    #Pour windows, tester https://github.com/Heribert17/mtp
 
 def get_drivelist():
     """Return a list of drives connected to the computer
 	- Windows:  return host, name,volumename, drivetype, volumeserialnumber
 	- Gnu/Linux: /proc/mounts files content, filtered (only dev/sdx lines)
 	"""
+    
     if 'win32' in sys.platform:
-
-        wmic_out = subprocess.Popen('wmic logicaldisk get name,volumename, drivetype, volumeserialnumber /Format:"%WINDIR%\System32\wbem\en-us\csv"',
+        wmic_out = subprocess.Popen('wmic logicaldisk get name,volumename, drivetype, volumeserialnumber /Format:"%WINDIR%\\System32\\wbem\\en-us\\csv"',
                                      shell=True, stdout=subprocess.PIPE)
         drivelistout, err = wmic_out.communicate()
         drivelist = drivelistout.decode(errors="ignore").replace("\r", "").split("\n")
@@ -201,6 +206,11 @@ def get_drivelist():
             drive[drive_type_index] = int(drive[drive_type_index])
             # drivefiltered = [drive for drive in drivelist if drive[drive_type_index] == str(2)] #We keep only the drives with type 2
             # driveLines = drivelisto.replace("\r", "").split('\n')
+
+    #if 'win32' in sys.platform:
+    #    availabledrive = os.listdrives()
+    #    drivelist = [ ["host", drive,  win32api.GetVolumeInformation(drive)[0]] for drive in availabledrive]
+    #    #Autre option : psutil : https://stackoverflow.com/a/66375701
 
     elif 'linux' in sys.platform:
         with open("/proc/mounts") as f:
@@ -216,7 +226,7 @@ def get_drivelist():
     # work, but I can't verify it...
     elif 'darwin':
         drivelist = os.listdir("/Volumes")
-
+    #print("Drivelist: ", drivelist)
     return drivelist
 
 
@@ -227,7 +237,6 @@ def find_in_sublist(piclist, groups_start):
         try:
             j = pic.index(groups_start)
         except ValueError as e:
-            
             continue
         return i
 
@@ -296,7 +305,10 @@ def dispatch_to_queue(pic, group_path):
     """Send a picture to be copied and his path destination, to a specific queue.
 	One queue for each camera/sdcard
 	"""
-    
+    if 'volume_names' not in locals() or len(volume_names) == 1: 
+        picQueue0.put([pic, group_path])
+        return
+
     if volume_names[0] in pic:
         picQueue0.put([pic, group_path])
     elif volume_names[1] in pic:
@@ -403,28 +415,37 @@ if __name__ == '__main__':
     dest_folder = args.destination
     cutoff = args.cut
     allgroups = args.allgroups
-    volume_names = [volume.strip() for volume in args.source.lower().split(",")]
-    print("Searching for volumes....")
-    alldrivelist = get_drivelist()
-    mtpdrivelist = get_mtpdrivelist()
-    try:
-        alldrivelist.extend(mtpdrivelist)
-    except TypeError:
-        pass
-    drivelist = []
-    for volume in volume_names:
-        drive_letter = get_drive_path(volume, alldrivelist)
-        if drive_letter:
-            drivelist.append([drive_letter, volume])
-    
-    for drive in drivelist:
-        print("Volume found: {}   ({})".format(drive[0], drive[1]))
-    if len(drivelist) == 0:
-        sys.exit("No Volume found !")
-    if len(drivelist) > 6:
-        sys.exit("Sorry, this script can't manage more than 6 sources \
-				If you need more, add some queues and thread, or \
-				rewrite the multithread part of this script to dynamicaly handle the number of sources")
+    if args.source :
+        volume_names = [volume.strip() for volume in args.source.lower().split(",")]
+        print("Searching for volumes....")
+        alldrivelist = get_drivelist()
+        mtpdrivelist = get_mtpdrivelist()
+        try:
+            alldrivelist.extend(mtpdrivelist)
+        except TypeError:
+            pass
+        drivelist = []
+        for volume in volume_names:
+            drive_letter = get_drive_path(volume, alldrivelist)
+            if drive_letter:
+                drivelist.append([drive_letter, volume])
+        
+        for drive in drivelist:
+            print("Volume found: {}   ({})".format(drive[0], drive[1]))
+        if len(drivelist) == 0:
+            sys.exit("No Volume found !")
+        if len(drivelist) > 6:
+            sys.exit("Sorry, this script can't manage more than 6 sources \
+                    If you need more, add some queues and thread, or \
+                    rewrite the multithread part of this script to dynamicaly handle the number of sources")
+    elif args.drive:
+        try:
+            drivelist = [[os.path.abspath(args.drive), ""]]
+            #volume_names = ["avant"]
+        except Exception as e:
+            print("drive not found")
+            print(e)
+            sys.exit()
 
     # Check if destination is a source too (bad idea)
     check_dest = find_in_sublist([[drive.lower() for drive in drivedetail] for drivedetail in drivelist],
@@ -445,7 +466,7 @@ if __name__ == '__main__':
         for future in future_lst:
             result = future.result()
             piclist.extend(result)
-
+    #print(piclist)
     piclist.sort(key=lambda timestamp: timestamp[2])
     groups = make_groups(piclist, cutoff)
 
