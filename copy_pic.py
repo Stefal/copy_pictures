@@ -466,7 +466,8 @@ if __name__ == '__main__':
         for future in future_lst:
             result = future.result()
             piclist.extend(result)
-    #print(piclist)
+    if len(piclist) == 0:
+        sys.exit("No picture found")
     piclist.sort(key=lambda timestamp: timestamp[2])
     groups = make_groups(piclist, cutoff)
 
