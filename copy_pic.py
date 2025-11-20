@@ -63,8 +63,8 @@ def arg_parse():
     parser.add_argument("destination", nargs="?", help="Path destination for the pictures. Without this parameter, "
                                                        "the script will use the current directory as the destination", default=os.getcwd())
     parser.add_argument("--version", action="version", version="%(prog)s 0.04")
-    parser.add_argument("-s", "--source", help="Name of the volume's sources", default="avant, droite, arriere, gauche, pla_droite, pla_gauche")
-#    parser.add_argument("-s", "--source", help="Name of the volume's sources")
+#    parser.add_argument("-s", "--source", help="Name of the volume's sources", default="avant, droite, arriere, gauche, pla_droite, pla_gauche")
+    parser.add_argument("-s", "--source", help="Name of the volume's sources")
     parser.add_argument("-d", "--drive", help="Drive path (linux) or letter (windows)")
     parser.add_argument("-c", "--cut", help="Min time between two pictures to create a new group (in seconds)",
                         default=10, type=int)
@@ -193,7 +193,7 @@ def get_drivelist():
 	"""
     
     if 'win32' in sys.platform:
-        wmic_out = subprocess.Popen('wmic logicaldisk get name,volumename, drivetype, volumeserialnumber /Format:"%WINDIR%\\System32\\wbem\\en-us\\csv"',
+        wmic_out = subprocess.Popen('wmic logicaldisk get name,volumename, drivetype, volumeserialnumber /Format:"csv"',
                                      shell=True, stdout=subprocess.PIPE)
         drivelistout, err = wmic_out.communicate()
         drivelist = drivelistout.decode(errors="ignore").replace("\r", "").split("\n")
@@ -494,7 +494,7 @@ if __name__ == '__main__':
         if str(user_input[0]).startswith('c'):
             cutoff = int(user_input[0][1:])
             groups = make_groups(piclist, cutoff)
-        if str(user_input[0].lower()) == 'q':
+        if str(user_input[0]).lower() == 'q':
             print("manual exit")
             sys.exit()
         input_validity = check_user_choice(user_input)
